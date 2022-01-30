@@ -1,11 +1,12 @@
 // eslint-disable-next-line node/no-unpublished-import
 import * as dotenv from "dotenv";
-import { ContractFactory, ethers } from "ethers";
-import { PolyjuiceConfig, AbiItems } from "@polyjuice-provider/base";
+import { ethers } from "ethers";
+import { PolyjuiceConfig } from "@polyjuice-provider/base";
 import {
   PolyjuiceWallet,
   PolyjuiceJsonRpcProvider,
 } from "@polyjuice-provider/ethers";
+import crypto from "crypto";
 
 dotenv.config();
 
@@ -16,12 +17,11 @@ const txOverrides = {
 
 async function main() {
   console.log("-----start-----");
-  // init account
-  // use yokai
-  // calc deposit address
 
-  // get CKB balance
+  // init the provider with polyjuice-provider
+  const erc20Abi = require("./abis/erc20.json");
   const polyjuiceConfig: PolyjuiceConfig = {
+    abiItems: erc20Abi,
     web3Url: process.env.RPC_URL,
   };
   const rpc = new PolyjuiceJsonRpcProvider(
@@ -39,16 +39,30 @@ async function main() {
     polyjuiceConfig,
     rpc
   );
+  // generate a randomUser which is not inited
+  const randomUser = new PolyjuiceWallet(
+    crypto.randomBytes(32).toString("hex"),
+    polyjuiceConfig,
+    rpc
+  );
   const deployerGodwokenAddr = rpc.godwoker.computeShortAddressByEoaEthAddress(
     deployer.address
   );
   const userGodwokenAddr = rpc.godwoker.computeShortAddressByEoaEthAddress(
     user.address
   );
+  const randomUserGodwokenAddr =
+    rpc.godwoker.computeShortAddressByEoaEthAddress(randomUser.address);
   console.log(`deployer ETH eoa address: ${deployer.address}`);
   console.log(`deployer godwoken short address: ${deployerGodwokenAddr}`);
   console.log(`user ETH eoa address: ${user.address}`);
   console.log(`user godwoken short address: ${userGodwokenAddr}`);
+  console.log(`random user ETH eoa address: ${randomUser.address}`);
+  console.log(`random user godwoken short address: ${randomUserGodwokenAddr}`);
+
+  // initialize the deployer and user account
+
+  // get CKB balance with `getBalance`
   // CKB decimal is 8, not 18 for ETH
   console.log(
     `deployer CKB balance: ${ethers.utils.formatUnits(
@@ -59,69 +73,56 @@ async function main() {
   console.log(
     `user CKB balance: ${ethers.utils.formatUnits(await user.getBalance(), 8)}`
   );
-  // console.log(
-  //   `CKB balance deployer addr: ${ethers.utils.formatUnits(
-  //     await rpc.getBalance(deployer.address),
-  //     8
-  //   )}`
-  // );
-  // console.log(
-  //   `CKB balance shortAddr: ${ethers.utils.formatUnits(
-  //     await rpc.getBalance(deployerGodwokenAddr),
-  //     8
-  //   )}`
-  // );
-
-  // deploy erc20 contract
-  const abi = require("../artifacts/contracts/erc20.sol/GLDToken.json").abi;
-  const bytecode =
-    require("../artifacts/contracts/erc20.sol/GLDToken.json").bytecode;
-  deployer.addAbi([abi] as AbiItems);
-  const erc20Factory = new ContractFactory(abi, bytecode, deployer);
-  const deployArgs = [ethers.utils.parseEther("100")];
-  const newDeployArgs = await deployer.convertDeployArgs(
-    deployArgs,
-    abi as AbiItems,
-    bytecode
+  console.log(
+    `random user CKB balance: ${ethers.utils.formatUnits(
+      await randomUser.getBalance(),
+      8
+    )}`
   );
-  const tx = erc20Factory.getDeployTransaction(...newDeployArgs);
-  tx.gasPrice = 0;
-  tx.gasLimit = 100_000_000;
-  const txResp = await deployer.sendTransaction(tx);
-  console.log(`txHash: ${txResp.hash}`);
-  const receipt = await txResp.wait();
-  const contractAddr = receipt.contractAddress;
-  console.log(`contractAddr: ${contractAddr}`);
-  // const contractAddr = '0x6447650e0E117963B21397B3cd64Bc75A88A4a35';
 
-  // get balance and transfer erc20
-  const erc20 = await erc20Factory.attach(contractAddr);
+  // transfer ckb
+  const ckbProxy = new ethers.Contract(
+    process.env.CKB_ERC20_PROXY_ADDRESS!,
+    erc20Abi,
+    deployer
+  );
+  const CKB_DECIMAL = await ckbProxy.decimals();
+  console.log("--- transfer from deployer to user");
+  let tmpTx;
+  tmpTx = await ckbProxy
+    .connect(deployer)
+    .transfer(user.address, 1, txOverrides);
+  await tmpTx.wait();
+  // get CKB balance with `ckbProxy.balanceOf`
   console.log(
     `deployer erc20Balance: ${ethers.utils.formatUnits(
-      await erc20.balanceOf(deployer.address)
+      await ckbProxy.balanceOf(deployer.address),
+      CKB_DECIMAL
     )}`
   );
   console.log(
     `user erc20Balance: ${ethers.utils.formatUnits(
-      await erc20.balanceOf(user.address)
+      await ckbProxy.balanceOf(user.address),
+      CKB_DECIMAL
     )}`
   );
+  console.log("--- transfer from deployer to random user");
+  tmpTx = await ckbProxy
+    .connect(deployer)
+    .transfer(randomUser.address, 1, txOverrides);
+  await tmpTx.wait();
   console.log(
     `deployer erc20Balance: ${ethers.utils.formatUnits(
-      await erc20.balanceOf(deployerGodwokenAddr)
+      await ckbProxy.balanceOf(deployer.address),
+      CKB_DECIMAL
     )}`
   );
   console.log(
-    `user erc20Balance: ${ethers.utils.formatUnits(
-      await erc20.balanceOf(userGodwokenAddr)
+    `random user erc20Balance: ${ethers.utils.formatUnits(
+      await ckbProxy.balanceOf(randomUser.address),
+      CKB_DECIMAL
     )}`
   );
-  // await erc20.connect(deployer).transfer(user.address, ethers.utils.parseEther("10"));
-  // console.log(`deployer erc20Balance: ${ethers.utils.formatUnits(await erc20.balanceOf(deployerGodwokenAddr))}`);
-  // console.log(`user erc20Balance: ${ethers.utils.formatUnits(await erc20.balanceOf(userGodwokenAddr))}`);
-  // await erc20
-  //   .connect(deployer)
-  //   .transfer(userGodwokenAddr, ethers.utils.parseEther("0.1"), txOverrides);
 }
 
 main().catch((error) => {

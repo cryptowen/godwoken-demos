@@ -39,6 +39,7 @@
   "dependencies": {
     "@polyjuice-provider/ethers": "^0.1.3",
     "@polyjuice-provider/truffle": "^0.1.3",
-    "@polyjuice-provider/web3": "^0.1.3"
+    "@polyjuice-provider/web3": "^0.1.3",
+    "crypto": "^1.0.1"
   }
 }

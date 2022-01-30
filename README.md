@@ -4,6 +4,12 @@
 
 ```bash
 yarn install
-npx hardhat compile
+cp .env.testnet .env
+
+# run assets demo
 npx ts-node gw-scripts/assets.ts
+
+# run contracts demo
+npx hardhat compile
+npx ts-node gw-scripts/contract.ts
 ```
